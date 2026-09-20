@@ -230,7 +230,11 @@ RUN --mount=type=cache,id=ragflow_uv,target=/root/.cache/uv,sharing=locked \
     else \
         sed -i 's|mirrors.aliyun.com/pypi|pypi.org|g' uv.lock; \
         sed -i 's|pypi.tuna.tsinghua.edu.cn|pypi.org|g' uv.lock; \
-        sed -i 's|gitee.com|github.com|g' uv.lock; \
+        # Direct git dependencies are declared in both pyproject.toml and uv.lock. \
+        # Rewrite both for GitHub-hosted builds; changing only uv.lock leaves uv \
+        # reading the original Gitee URL from pyproject.toml. \
+        sed -i 's|gitee.com/infiniflow/graspologic.git|github.com/infiniflow/graspologic.git|g' pyproject.toml; \
+        sed -i 's|gitee.com/infiniflow/graspologic.git|github.com/infiniflow/graspologic.git|g' uv.lock; \
     fi; \
     # --refresh-package litellm forces a re-download of litellm from the
     # (post-sed) URLs in uv.lock even if BuildKit's persistent uv cache mount
