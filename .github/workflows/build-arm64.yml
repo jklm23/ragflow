@@ -1,0 +1,78 @@
+name: Build RAGFlow ARM64
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show architecture
+        run: |
+          uname -a
+          uname -m
+          docker version
+          df -h
+
+      - name: Install uv
+        run: |
+          python3 -m pip install --user uv
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Login to Alibaba Cloud ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Download RAGFlow dependencies
+        working-directory: ragflow_deps
+        run: |
+          uv run python3 download_deps.py
+
+      - name: Build ragflow_deps ARM64
+        working-directory: ragflow_deps
+        run: |
+          docker build \
+            --platform linux/arm64 \
+            -f Dockerfile \
+            -t infiniflow/ragflow_deps:latest \
+            .
+
+      - name: Build RAGFlow ARM64
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+        run: |
+          docker build \
+            --platform linux/arm64 \
+            -f Dockerfile \
+            -t ${ACR_REGISTRY}/${ACR_NAMESPACE}/ragflow:arm64-latest \
+            -t ${ACR_REGISTRY}/${ACR_NAMESPACE}/ragflow:arm64-${GITHUB_SHA::7} \
+            .
+
+      - name: Verify image architecture
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+        run: |
+          docker image inspect \
+            ${ACR_REGISTRY}/${ACR_NAMESPACE}/ragflow:arm64-latest \
+            --format '{{.Architecture}}'
+
+      - name: Push ARM64 image
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+        run: |
+          docker push \
+            ${ACR_REGISTRY}/${ACR_NAMESPACE}/ragflow:arm64-latest
+
+          docker push \
+            ${ACR_REGISTRY}/${ACR_NAMESPACE}/ragflow:arm64-${GITHUB_SHA::7}
