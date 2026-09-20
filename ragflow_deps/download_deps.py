@@ -41,7 +41,7 @@ import urllib.request
 os.environ.setdefault("NLTK_ALLOW_PROXIED_URLOPEN", "1")
 
 import nltk
-from huggingface_hub import snapshot_download
+from huggingface_hub import hf_hub_download, snapshot_download
 
 # mirrors internal/common.DeepDocORTVersion (Go in-process backend). ONE OF
 # FOUR places (with that Go constant, ORT_VERSION in ragflow_deps/download_go_deps.py,
@@ -183,11 +183,30 @@ repos = [
     "InfiniFlow/deepdoc",
 ]
 
+# Only the BGE-M3 tokenizer is needed by this deployment for accurate local
+# token counting. Do NOT add BGE-M3 to `repos` above: snapshot_download would
+# pull the full model weights, which are served by the existing external
+# embedding service and must not be baked into the RAGFlow image.
+tokenizer_assets = [
+    ("BAAI/bge-m3", "sentencepiece.bpe.model"),
+]
+
 
 def download_model(repository_id):
     local_directory = os.path.abspath(os.path.join("huggingface.co", repository_id))
     os.makedirs(local_directory, exist_ok=True)
     snapshot_download(repo_id=repository_id, local_dir=local_directory)
+
+
+def download_model_file(repository_id, filename):
+    """Download one small tokenizer asset without pulling model weights."""
+    local_directory = os.path.abspath(os.path.join("huggingface.co", repository_id))
+    os.makedirs(local_directory, exist_ok=True)
+    hf_hub_download(
+        repo_id=repository_id,
+        filename=filename,
+        local_dir=local_directory,
+    )
 
 
 if __name__ == "__main__":
@@ -313,6 +332,10 @@ if __name__ == "__main__":
     for repo_id in repos:
         print(f"Downloading huggingface repo {repo_id}...")
         download_model(repo_id)
+
+    for repo_id, filename in tokenizer_assets:
+        print(f"Downloading tokenizer asset {repo_id}/{filename}...")
+        download_model_file(repo_id, filename)
 
     # Guard: the Go in-process DeepDoc backend loads the .ort weights from the
     # InfiniFlow/deepdoc snapshot pulled above. snapshot_download fetches the
